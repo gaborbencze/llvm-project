@@ -94,6 +94,17 @@ Improvements to clang-tidy
   Without the null terminator it can result in undefined behaviour when the
   string is read.
 
+- New :doc:`bugprone-suspicious-memory-comparison
+  <clang-tidy/checks/bugprone-suspicious-memory-comparison>` check.
+
+  Finds potentially incorrect calls to ``memcmp()`` that compare padding or
+  non-standard-layout classes.
+
+- New alias :doc:`cert-exp42-c
+  <clang-tidy/checks/cert-exp42-c>` to
+  :doc:`bugprone-suspicious-memory-comparison
+  <clang-tidy/checks/bugprone-suspicious-memory-comparison>` was added.
+
 - New :doc:`cert-mem57-cpp
   <clang-tidy/checks/cert-mem57-cpp>` check.
 
