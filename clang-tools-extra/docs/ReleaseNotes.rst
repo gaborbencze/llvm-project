@@ -100,11 +100,6 @@ Improvements to clang-tidy
   Finds potentially incorrect calls to ``memcmp()`` that compare padding or
   non-standard-layout classes.
 
-- New alias :doc:`cert-exp42-c
-  <clang-tidy/checks/cert-exp42-c>` to
-  :doc:`bugprone-suspicious-memory-comparison
-  <clang-tidy/checks/bugprone-suspicious-memory-comparison>` was added.
-
 - New :doc:`cert-mem57-cpp
   <clang-tidy/checks/cert-mem57-cpp>` check.
 
@@ -170,6 +165,11 @@ Improvements to clang-tidy
 
   Finds types that could be made trivially-destructible by removing out-of-line
   defaulted destructor declarations.
+
+- New alias :doc:`cert-exp42-c
+  <clang-tidy/checks/cert-exp42-c>` to
+  :doc:`bugprone-suspicious-memory-comparison
+  <clang-tidy/checks/bugprone-suspicious-memory-comparison>` was added.
 
 - Improved :doc:`bugprone-posix-return
   <clang-tidy/checks/bugprone-posix-return>` check.
