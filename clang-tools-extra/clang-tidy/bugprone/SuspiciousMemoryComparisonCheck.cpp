@@ -35,13 +35,14 @@ static bool hasPaddingInBase(const clang::ASTContext &Ctx, const RecordDecl *RD,
     return !Base.getType()->getAsCXXRecordDecl()->isEmpty();
   };
 
-  if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
+  if (const auto *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
     const auto NonEmptyBaseIt = llvm::find_if(CXXRD->bases(), IsNotEmptyBase);
     if (NonEmptyBaseIt != CXXRD->bases().end()) {
       assert(llvm::count_if(CXXRD->bases(), IsNotEmptyBase) == 1 &&
              "RD is expected to be a standard layout type");
 
-      const auto *BaseRD = NonEmptyBaseIt->getType()->getAsCXXRecordDecl();
+      const CXXRecordDecl *BaseRD =
+          NonEmptyBaseIt->getType()->getAsCXXRecordDecl();
       const uint64_t SizeOfBase = Ctx.getTypeSize(BaseRD->getTypeForDecl());
       TotalSize += SizeOfBase;
 
@@ -125,7 +126,8 @@ void SuspiciousMemoryComparisonCheck::check(
 
   const Expr *SizeExpr = CE->getArg(2);
   assert(SizeExpr != nullptr);
-  const auto ComparedBits = tryEvaluateSizeExpr(SizeExpr, Ctx);
+  const llvm::Optional<int64_t> ComparedBits =
+      tryEvaluateSizeExpr(SizeExpr, Ctx);
 
   for (unsigned int i = 0; i < 2; ++i) {
     const Expr *ArgExpr = CE->getArg(i);
@@ -136,7 +138,7 @@ void SuspiciousMemoryComparisonCheck::check(
     if (PointeeType->isRecordType()) {
       const RecordDecl *RD = PointeeType->getAsRecordDecl()->getDefinition();
       if (RD != nullptr) {
-        if (const CXXRecordDecl *CXXDecl = dyn_cast<CXXRecordDecl>(RD)) {
+        if (const auto *CXXDecl = dyn_cast<CXXRecordDecl>(RD)) {
           if (!CXXDecl->isStandardLayout()) {
             diag(CE->getBeginLoc(),
                  "comparing object representation of non-standard-layout "

@@ -11,6 +11,7 @@
 #include "../ClangTidyModuleRegistry.h"
 #include "../bugprone/UnhandledSelfAssignmentCheck.h"
 #include "../bugprone/BadSignalToKillThreadCheck.h"
+#include "../bugprone/SuspiciousMemoryComparisonCheck.h"
 #include "../google/UnnamedNamespaceInHeaderCheck.h"
 #include "../misc/NewDeleteOverloadsCheck.h"
 #include "../misc/NonCopyableObjects.h"
@@ -80,6 +81,9 @@ public:
         "cert-dcl16-c");
     // ENV
     CheckFactories.registerCheck<CommandProcessorCheck>("cert-env33-c");
+    // EXP
+    CheckFactories.registerCheck<bugprone::SuspiciousMemoryComparisonCheck>(
+        "cert-exp42-c");
     // FLP
     CheckFactories.registerCheck<FloatLoopCounter>("cert-flp30-c");
     // FIO
