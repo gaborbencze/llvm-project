@@ -1,6 +1,6 @@
 // RUN: %check_clang_tidy %s bugprone-suspicious-memory-comparison %t
 
-typedef unsigned long long size_t;
+typedef __SIZE_TYPE__ size_t;
 int memcmp(const void *lhs, const void *rhs, size_t count);
 
 namespace std {
@@ -16,7 +16,8 @@ struct s {
 
 void noncompliant(const struct s *left, const struct s *right) {
   if ((left && right) && (0 == memcmp(left, right, sizeof(struct s)))) {
-    // CHECK-MESSAGES: :[[@LINE-1]]:32: warning: comparing padding bytes
+    // CHECK-MESSAGES: :[[@LINE-1]]:32: warning: comparing padding data in type
+    // sei_cert_example_exp42_c::s; consider comparing the fields manually
   }
 }
 
@@ -54,7 +55,7 @@ public:
 void f(C &c1, C &c2) {
   if (!std::memcmp(&c1, &c2, sizeof(C))) {
     // CHECK-MESSAGES: :[[@LINE-1]]:8: warning: comparing object representation
-    // of non-standard-layout type 'sei_cert_example_oop57_cpp::C'; consider
+    // of non-standard-layout type sei_cert_example_oop57_cpp::C; consider
     // using a comparison operator instead
   }
 }
@@ -69,11 +70,13 @@ struct S {
 void test() {
   S a, b;
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // trailing_padding::S; consider comparing the fields manually
   memcmp(&a, &b, sizeof(int));
   memcmp(&a, &b, sizeof(int) + sizeof(char));
   memcmp(&a, &b, 2 * sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // trailing_padding::S; consider comparing the fields manually
 }
 } // namespace trailing_padding
 
@@ -86,12 +89,15 @@ struct S {
 void test() {
   S a, b;
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // inner_padding::S; consider comparing the fields manually
   memcmp(&a, &b, sizeof(char) + sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // inner_padding::S; consider comparing the fields manually
   memcmp(&a, &b, sizeof(char));
   memcmp(&a, &b, 2 * sizeof(char));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // inner_padding::S; consider comparing the fields manually
 }
 } // namespace inner_padding
 
@@ -104,7 +110,8 @@ struct S {
 void test() {
   S a, b;
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // bitfield::S; consider comparing the fields manually
   memcmp(&a, &b, 2); // no-warning: no padding in first 2 bytes
 }
 } // namespace bitfield
@@ -118,10 +125,12 @@ struct S {
 void test() {
   S a, b;
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // bitfield_2::S; consider comparing the fields manually
   memcmp(&a, &b, 2);
   memcmp(&a, &b, 3);
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // bitfield_2::S; consider comparing the fields manually
 }
 } // namespace bitfield_2
 
@@ -135,7 +144,8 @@ struct S {
 void test() {
   S a, b;
   memcmp(&a, &b, 1);
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // bitfield_3::S; consider comparing the fields manually
 }
 } // namespace bitfield_3
 
@@ -162,7 +172,8 @@ void test() {
   S a[3];
   S b[3];
   memcmp(a, b, 3 * sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // array_with_padding::S; consider comparing the fields manually
 }
 } // namespace array_with_padding
 
@@ -202,9 +213,11 @@ void test() {
   S b;
   memcmp(&a, &b, sizeof(short));
   memcmp(&a, &b, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_after_union::S; consider comparing the fields manually
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_after_union::S; consider comparing the fields manually
 }
 } // namespace padding_after_union
 
@@ -240,11 +253,14 @@ void test() {
   T a, b;
   memcmp(&a, &b, sizeof(int) + sizeof(char));
   memcmp(&a, &b, sizeof(int) + 2 * sizeof(char));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_nested_struct::T; consider comparing the fields manually
   memcmp(&a, &b, sizeof(S));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_nested_struct::T; consider comparing the fields manually
   memcmp(&a, &b, sizeof(T));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_nested_struct::T; consider comparing the fields manually
 }
 } // namespace padding_in_nested_struct
 
@@ -262,7 +278,8 @@ void test() {
   memcmp(&a, &b, sizeof(char));
   memcmp(&a, &b, sizeof(S));
   memcmp(&a, &b, sizeof(T));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_after_nested_struct::T; consider comparing the fields manually
 }
 } // namespace padding_after_nested_struct
 
@@ -280,18 +297,22 @@ void testDerived() {
   Derived a, b;
   memcmp(&a, &b, sizeof(char));
   memcmp(&a, &b, sizeof(Base));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_base::Derived; consider comparing the fields manually
   memcmp(&a, &b, sizeof(Derived));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_base::Derived; consider comparing the fields manually
 }
 
 void testDerived2() {
   Derived2 a, b;
   memcmp(&a, &b, sizeof(char));
   memcmp(&a, &b, sizeof(Base));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_base::Derived2; consider comparing the fields manually
   memcmp(&a, &b, sizeof(Derived2));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding bytes
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // padding_in_base::Derived2; consider comparing the fields manually
 }
 
 } // namespace padding_in_base
@@ -332,7 +353,7 @@ void test() {
   C a, b;
   memcmp(&a, &b, sizeof(C));
   // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing object representation
-  // of non-standard-layout type 'non_standard_layout::C'; consider using a
+  // of non-standard-layout type non_standard_layout::C; consider using a
   // comparison operator instead
 }
 

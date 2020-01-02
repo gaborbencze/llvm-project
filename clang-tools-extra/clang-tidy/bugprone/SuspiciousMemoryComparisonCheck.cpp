@@ -16,20 +16,16 @@ namespace clang {
 namespace tidy {
 namespace bugprone {
 
-static constexpr llvm::StringLiteral CallExprName = "call";
-
-static bool hasPadding(const clang::ASTContext &Ctx, const RecordDecl *RD,
+static bool hasPadding(const ASTContext &Ctx, const RecordDecl *RD,
                        uint64_t ComparedBits);
 
-static uint64_t getFieldSize(const clang::FieldDecl &FD,
-                             clang::QualType FieldType,
-                             const clang::ASTContext &Ctx) {
-  if (FD.isBitField())
-    return FD.getBitWidthValue(Ctx);
-  return Ctx.getTypeSize(FieldType);
+static uint64_t getFieldSize(const FieldDecl &FD, QualType FieldType,
+                             const ASTContext &Ctx) {
+  return FD.isBitField() ? FD.getBitWidthValue(Ctx)
+                         : Ctx.getTypeSize(FieldType);
 }
 
-static bool hasPaddingInBase(const clang::ASTContext &Ctx, const RecordDecl *RD,
+static bool hasPaddingInBase(const ASTContext &Ctx, const RecordDecl *RD,
                              uint64_t ComparedBits, uint64_t &TotalSize) {
   const auto IsNotEmptyBase = [](const CXXBaseSpecifier &Base) {
     return !Base.getType()->getAsCXXRecordDecl()->isEmpty();
@@ -43,7 +39,7 @@ static bool hasPaddingInBase(const clang::ASTContext &Ctx, const RecordDecl *RD,
 
       const CXXRecordDecl *BaseRD =
           NonEmptyBaseIt->getType()->getAsCXXRecordDecl();
-      const uint64_t SizeOfBase = Ctx.getTypeSize(BaseRD->getTypeForDecl());
+      uint64_t SizeOfBase = Ctx.getTypeSize(BaseRD->getTypeForDecl());
       TotalSize += SizeOfBase;
 
       // check if comparing padding in base
@@ -55,37 +51,38 @@ static bool hasPaddingInBase(const clang::ASTContext &Ctx, const RecordDecl *RD,
   return false;
 }
 
-static bool hasPaddingBetweenFields(const clang::ASTContext &Ctx,
-                                    const RecordDecl *RD, uint64_t ComparedBits,
+static bool hasPaddingBetweenFields(const ASTContext &Ctx, const RecordDecl *RD,
+                                    uint64_t ComparedBits,
                                     uint64_t &TotalSize) {
   for (const auto &Field : RD->fields()) {
-    const uint64_t FieldOffset = Ctx.getFieldOffset(Field);
-    assert(FieldOffset >= TotalSize);
+    uint64_t FieldOffset = Ctx.getFieldOffset(Field);
+    assert(FieldOffset >= TotalSize &&
+           "Fields seem to overlap; this should never happen!");
 
+    // Check if comparing padding before this field.
     if (FieldOffset > TotalSize && TotalSize < ComparedBits)
-      // Padding before this field
       return true;
 
     if (FieldOffset >= ComparedBits)
       return false;
 
-    const uint64_t SizeOfField = getFieldSize(*Field, Field->getType(), Ctx);
+    uint64_t SizeOfField = getFieldSize(*Field, Field->getType(), Ctx);
     TotalSize += SizeOfField;
 
-    if (Field->getType()->isRecordType()) {
-      // Check if comparing padding in nested record
-      if (hasPadding(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
-                     ComparedBits - FieldOffset))
-        return true;
-    }
+    // Check if comparing padding in nested record.
+    if (Field->getType()->isRecordType() &&
+        hasPadding(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
+                   ComparedBits - FieldOffset))
+      return true;
   }
 
   return false;
 }
 
-static bool hasPadding(const clang::ASTContext &Ctx, const RecordDecl *RD,
+static bool hasPadding(const ASTContext &Ctx, const RecordDecl *RD,
                        uint64_t ComparedBits) {
-  assert(RD && RD->isCompleteDefinition());
+  assert(RD && RD->isCompleteDefinition() &&
+         "Expected the complete record definition.");
   if (RD->isUnion())
     return false;
 
@@ -95,45 +92,42 @@ static bool hasPadding(const clang::ASTContext &Ctx, const RecordDecl *RD,
       hasPaddingBetweenFields(Ctx, RD, ComparedBits, TotalSize))
     return true;
 
-  // check for trailing padding
+  // Check if comparing trailing padding.
   return TotalSize < Ctx.getTypeSize(RD->getTypeForDecl()) &&
          ComparedBits > TotalSize;
 }
 
-static llvm::Optional<int64_t>
-tryEvaluateSizeExpr(const Expr *SizeExpr, const clang::ASTContext &Ctx) {
-  clang::Expr::EvalResult Result;
+static llvm::Optional<int64_t> tryEvaluateSizeExpr(const Expr *SizeExpr,
+                                                   const ASTContext &Ctx) {
+  Expr::EvalResult Result;
   if (SizeExpr->EvaluateAsRValue(Result, Ctx))
     return Ctx.toBits(
         CharUnits::fromQuantity(Result.Val.getInt().getExtValue()));
-  else
-    return None;
+  return None;
 }
 
 void SuspiciousMemoryComparisonCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       callExpr(callee(namedDecl(
                    anyOf(hasName("::memcmp"), hasName("::std::memcmp")))))
-          .bind(CallExprName),
+          .bind("call"),
       this);
 }
 
 void SuspiciousMemoryComparisonCheck::check(
     const MatchFinder::MatchResult &Result) {
-  const clang::ASTContext &Ctx = *Result.Context;
-  const auto *CE = Result.Nodes.getNodeAs<CallExpr>(CallExprName);
-  assert(CE != nullptr);
+  const ASTContext &Ctx = *Result.Context;
+  const auto *CE = Result.Nodes.getNodeAs<CallExpr>("call");
 
   const Expr *SizeExpr = CE->getArg(2);
-  assert(SizeExpr != nullptr);
-  const llvm::Optional<int64_t> ComparedBits =
-      tryEvaluateSizeExpr(SizeExpr, Ctx);
+  assert(SizeExpr != nullptr && "Third argument of memcmp is mandatory.");
+  llvm::Optional<int64_t> ComparedBits = tryEvaluateSizeExpr(SizeExpr, Ctx);
 
   for (unsigned int i = 0; i < 2; ++i) {
     const Expr *ArgExpr = CE->getArg(i);
-    const QualType ArgType = ArgExpr->IgnoreImplicit()->getType();
-    const Type *const PointeeType = ArgType->getPointeeOrArrayElementType();
-    assert(PointeeType != nullptr);
+    QualType ArgType = ArgExpr->IgnoreImplicit()->getType();
+    const Type *PointeeType = ArgType->getPointeeOrArrayElementType();
+    assert(PointeeType != nullptr && "PointeeType should always be available.");
 
     if (PointeeType->isRecordType()) {
       const RecordDecl *RD = PointeeType->getAsRecordDecl()->getDefinition();
@@ -143,13 +137,15 @@ void SuspiciousMemoryComparisonCheck::check(
             diag(CE->getBeginLoc(),
                  "comparing object representation of non-standard-layout "
                  "type %0; consider using a comparison operator instead")
-                << ArgType->getPointeeType();
+                << PointeeType->getAsTagDecl()->getQualifiedNameAsString();
             break;
           }
         }
 
         if (ComparedBits && hasPadding(Ctx, RD, *ComparedBits)) {
-          diag(CE->getBeginLoc(), "comparing padding bytes");
+          diag(CE->getBeginLoc(), "comparing padding data in type %0; "
+                                  "consider comparing the fields manually")
+              << PointeeType->getAsTagDecl()->getQualifiedNameAsString();
           break;
         }
       }
