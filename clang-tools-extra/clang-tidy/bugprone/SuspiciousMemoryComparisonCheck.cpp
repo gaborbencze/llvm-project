@@ -42,7 +42,7 @@ static bool hasPaddingInBase(const ASTContext &Ctx, const RecordDecl *RD,
       uint64_t SizeOfBase = Ctx.getTypeSize(BaseRD->getTypeForDecl());
       TotalSize += SizeOfBase;
 
-      // check if comparing padding in base
+      // Check if comparing padding in base.
       if (hasPadding(Ctx, BaseRD, ComparedBits))
         return true;
     }
