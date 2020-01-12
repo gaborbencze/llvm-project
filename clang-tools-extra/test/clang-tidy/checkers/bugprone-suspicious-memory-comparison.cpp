@@ -123,5 +123,88 @@ void test() {
   S a, b;
   std::memcmp(&a, &b, sizeof(S));
 }
-
 } // namespace static_ignored
+
+namespace operator_void_ptr {
+struct S {
+  operator void *() const;
+};
+
+void test() {
+  S s;
+  std::memcmp(s, s, sizeof(s));
+}
+} // namespace operator_void_ptr
+
+namespace empty_struct {
+struct S {};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(S));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // empty_struct::S; consider comparing the fields manually
+}
+} // namespace empty_struct
+
+namespace empty_field {
+struct Empty {};
+struct S {
+  Empty e;
+};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(S));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // empty_field::S; consider comparing the fields manually
+}
+} // namespace empty_field
+
+namespace no_unique_address_attribute {
+struct Empty {};
+
+namespace no_padding {
+struct S {
+  char c;
+  [[no_unique_address]] Empty e;
+};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(S));
+}
+
+} // namespace no_padding
+
+namespace multiple_empties_same_type {
+struct S {
+  char c;
+  [[no_unique_address]] Empty e1, e2;
+};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(S));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // no_unique_address_attribute::multiple_empties_same_type::S; consider
+  // comparing the fields manually
+}
+
+} // namespace multiple_empties_same_type
+
+namespace multiple_empties_different_types {
+struct Empty2 {};
+
+struct S {
+  char c;
+  [[no_unique_address]] Empty e1;
+  [[no_unique_address]] Empty2 e2;
+};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(S));
+}
+} // namespace multiple_empties_different_types
+} // namespace no_unique_address_attribute

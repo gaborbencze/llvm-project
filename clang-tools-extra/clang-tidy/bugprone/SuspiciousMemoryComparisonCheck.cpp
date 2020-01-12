@@ -27,12 +27,12 @@ static uint64_t getFieldSize(const FieldDecl &FD, QualType FieldType,
 
 static bool hasPaddingInBase(const ASTContext &Ctx, const RecordDecl *RD,
                              uint64_t ComparedBits, uint64_t &TotalSize) {
-  const auto IsNotEmptyBase = [](const CXXBaseSpecifier &Base) {
+  auto IsNotEmptyBase = [](const CXXBaseSpecifier &Base) {
     return !Base.getType()->getAsCXXRecordDecl()->isEmpty();
   };
 
   if (const auto *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
-    const auto NonEmptyBaseIt = llvm::find_if(CXXRD->bases(), IsNotEmptyBase);
+    auto NonEmptyBaseIt = llvm::find_if(CXXRD->bases(), IsNotEmptyBase);
     if (NonEmptyBaseIt != CXXRD->bases().end()) {
       assert(llvm::count_if(CXXRD->bases(), IsNotEmptyBase) == 1 &&
              "RD is expected to be a standard layout type");
@@ -56,8 +56,6 @@ static bool hasPaddingBetweenFields(const ASTContext &Ctx, const RecordDecl *RD,
                                     uint64_t &TotalSize) {
   for (const auto &Field : RD->fields()) {
     uint64_t FieldOffset = Ctx.getFieldOffset(Field);
-    assert(FieldOffset >= TotalSize &&
-           "Fields seem to overlap; this should never happen!");
 
     // Check if comparing padding before this field.
     if (FieldOffset > TotalSize && TotalSize < ComparedBits)
@@ -66,14 +64,16 @@ static bool hasPaddingBetweenFields(const ASTContext &Ctx, const RecordDecl *RD,
     if (FieldOffset >= ComparedBits)
       return false;
 
-    uint64_t SizeOfField = getFieldSize(*Field, Field->getType(), Ctx);
-    TotalSize += SizeOfField;
+    if (!Field->isZeroSize(Ctx)) {
+      uint64_t SizeOfField = getFieldSize(*Field, Field->getType(), Ctx);
+      TotalSize += SizeOfField;
 
-    // Check if comparing padding in nested record.
-    if (Field->getType()->isRecordType() &&
-        hasPadding(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
-                   ComparedBits - FieldOffset))
-      return true;
+      // Check if comparing padding in nested record.
+      if (Field->getType()->isRecordType() &&
+          hasPadding(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
+                     ComparedBits - FieldOffset))
+        return true;
+    }
   }
 
   return false;
@@ -130,14 +130,14 @@ void SuspiciousMemoryComparisonCheck::check(
     assert(PointeeType != nullptr && "PointeeType should always be available.");
 
     if (PointeeType->isRecordType()) {
-      const RecordDecl *RD = PointeeType->getAsRecordDecl()->getDefinition();
-      if (RD != nullptr) {
+      if (const RecordDecl *RD =
+              PointeeType->getAsRecordDecl()->getDefinition()) {
         if (const auto *CXXDecl = dyn_cast<CXXRecordDecl>(RD)) {
           if (!CXXDecl->isStandardLayout()) {
             diag(CE->getBeginLoc(),
                  "comparing object representation of non-standard-layout "
                  "type %0; consider using a comparison operator instead")
-                << PointeeType->getAsTagDecl()->getQualifiedNameAsString();
+                << PointeeType->getAsTagDecl();
             break;
           }
         }
@@ -145,7 +145,7 @@ void SuspiciousMemoryComparisonCheck::check(
         if (ComparedBits && hasPadding(Ctx, RD, *ComparedBits)) {
           diag(CE->getBeginLoc(), "comparing padding data in type %0; "
                                   "consider comparing the fields manually")
-              << PointeeType->getAsTagDecl()->getQualifiedNameAsString();
+              << PointeeType->getAsTagDecl();
           break;
         }
       }
