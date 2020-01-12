@@ -208,3 +208,21 @@ void test() {
 }
 } // namespace multiple_empties_different_types
 } // namespace no_unique_address_attribute
+
+namespace alignment {
+struct S {
+  char x;
+  alignas(sizeof(int)) char y[sizeof(int)];
+};
+
+void test() {
+  S a, b;
+  std::memcmp(&a, &b, sizeof(char));
+  std::memcmp(&a, &b, 2 * sizeof(char));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // alignment::S; consider comparing the fields manually
+  std::memcmp(&a, &b, sizeof(S));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // alignment::S; consider comparing the fields manually
+}
+} // namespace alignment
