@@ -187,6 +187,23 @@ void Test_Union_NoPadding() {
   memcmp(&a, &b, sizeof(struct Union_NoPadding));
 }
 
+union UnionWithPaddingInNestedStruct {
+  int i;
+
+  struct {
+    int i;
+    char c;
+  } x;
+};
+
+void Test_UnionWithPaddingInNestedStruct() {
+  union UnionWithPaddingInNestedStruct a, b;
+  memcmp(&a, &b, sizeof(char));
+  memcmp(&a, &b, sizeof(union UnionWithPaddingInNestedStruct));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: comparing padding data in type
+  // UnionWithPaddingInNestedStruct; consider comparing the fields manually
+}
+
 struct PaddingInNested {
   struct TrailingPadding x;
   char y;
