@@ -16,85 +16,31 @@ namespace clang {
 namespace tidy {
 namespace bugprone {
 
-static bool hasPadding(const ASTContext &Ctx, const RecordDecl *RD,
-                       uint64_t ComparedBits);
-
 static uint64_t getFieldSize(const FieldDecl &FD, QualType FieldType,
                              const ASTContext &Ctx) {
   return FD.isBitField() ? FD.getBitWidthValue(Ctx)
                          : Ctx.getTypeSize(FieldType);
 }
 
-static bool hasPaddingInBase(const ASTContext &Ctx, const RecordDecl *RD,
-                             uint64_t ComparedBits, uint64_t &TotalSize) {
-  auto IsNotEmptyBase = [](const CXXBaseSpecifier &Base) {
-    return !Base.getType()->getAsCXXRecordDecl()->isEmpty();
-  };
-
-  if (const auto *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
-    auto NonEmptyBaseIt = llvm::find_if(CXXRD->bases(), IsNotEmptyBase);
-    if (NonEmptyBaseIt != CXXRD->bases().end()) {
-      assert(llvm::count_if(CXXRD->bases(), IsNotEmptyBase) == 1 &&
-             "RD is expected to be a standard layout type");
-
-      const CXXRecordDecl *BaseRD =
-          NonEmptyBaseIt->getType()->getAsCXXRecordDecl();
-      uint64_t SizeOfBase = Ctx.getTypeSize(BaseRD->getTypeForDecl());
-      TotalSize += SizeOfBase;
-
-      // Check if comparing padding in base.
-      if (hasPadding(Ctx, BaseRD, ComparedBits))
-        return true;
-    }
-  }
-
-  return false;
-}
-
-static bool hasPaddingBetweenFields(const ASTContext &Ctx, const RecordDecl *RD,
-                                    uint64_t ComparedBits,
-                                    uint64_t &TotalSize) {
+static void markUsedBits(const ASTContext &Ctx, const RecordDecl *RD,
+                         llvm::BitVector &Bits, uint64_t Offset) {
   for (const auto &Field : RD->fields()) {
-    uint64_t FieldOffset = Ctx.getFieldOffset(Field);
-
-    // Check if comparing padding before this field.
-    if (FieldOffset > TotalSize && TotalSize < ComparedBits)
-      return true;
-
-    if (FieldOffset >= ComparedBits)
-      return false;
-
-    if (!Field->isZeroSize(Ctx)) {
-      uint64_t SizeOfField = getFieldSize(*Field, Field->getType(), Ctx);
-      TotalSize += SizeOfField;
-
-      // Check if comparing padding in nested record.
-      if (Field->getType()->isRecordType() &&
-          hasPadding(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
-                     ComparedBits - FieldOffset))
-        return true;
+    uint64_t FieldOffset = Offset + Ctx.getFieldOffset(Field);
+    if (Field->getType()->isRecordType()) {
+      markUsedBits(Ctx, Field->getType()->getAsRecordDecl()->getDefinition(),
+                   Bits, FieldOffset);
+    } else {
+      uint64_t FieldSize = getFieldSize(*Field, Field->getType(), Ctx);
+      Bits.set(FieldOffset, FieldOffset + FieldSize);
     }
   }
-
-  return false;
 }
 
-static bool hasPadding(const ASTContext &Ctx, const RecordDecl *RD,
-                       uint64_t ComparedBits) {
-  assert(RD && RD->isCompleteDefinition() &&
-         "Expected the complete record definition.");
-  if (RD->isUnion())
-    return false;
-
-  uint64_t TotalSize = 0;
-
-  if (hasPaddingInBase(Ctx, RD, ComparedBits, TotalSize) ||
-      hasPaddingBetweenFields(Ctx, RD, ComparedBits, TotalSize))
-    return true;
-
-  // Check if comparing trailing padding.
-  return TotalSize < Ctx.getTypeSize(RD->getTypeForDecl()) &&
-         ComparedBits > TotalSize;
+static llvm::BitVector getUsedBits(const ASTContext &Ctx,
+                                   const RecordDecl *RD) {
+  llvm::BitVector Bits(Ctx.getTypeSize(RD->getTypeForDecl()));
+  markUsedBits(Ctx, RD, Bits, 0);
+  return Bits;
 }
 
 static llvm::Optional<int64_t> tryEvaluateSizeExpr(const Expr *SizeExpr,
@@ -104,6 +50,28 @@ static llvm::Optional<int64_t> tryEvaluateSizeExpr(const Expr *SizeExpr,
     return Ctx.toBits(
         CharUnits::fromQuantity(Result.Val.getInt().getExtValue()));
   return None;
+}
+
+// Returns the base of RD with non-static data members.
+// If no such base exists, returns RD.
+const RecordDecl *getNonEmptyBase(const RecordDecl *RD) {
+  auto IsNotEmptyBase = [](const CXXBaseSpecifier &Base) {
+    return !Base.getType()->getAsCXXRecordDecl()->isEmpty();
+  };
+
+  if (const auto *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
+    assert(CXXRD->isStandardLayout() &&
+           "Only standard-layout types are supported.");
+
+    while (true) {
+      auto NonEmptyBaseIt = llvm::find_if(CXXRD->bases(), IsNotEmptyBase);
+      if (NonEmptyBaseIt == CXXRD->bases().end())
+        return CXXRD;
+      CXXRD = NonEmptyBaseIt->getType()->getAsCXXRecordDecl();
+    }
+  }
+
+  return RD;
 }
 
 void SuspiciousMemoryComparisonCheck::registerMatchers(MatchFinder *Finder) {
@@ -142,7 +110,10 @@ void SuspiciousMemoryComparisonCheck::check(
           }
         }
 
-        if (ComparedBits && hasPadding(Ctx, RD, *ComparedBits)) {
+        int firstUnusedBit =
+            getUsedBits(Ctx, getNonEmptyBase(RD)).find_first_unset();
+        if (ComparedBits && firstUnusedBit != -1 &&
+            firstUnusedBit < *ComparedBits) {
           diag(CE->getBeginLoc(), "comparing padding data in type %0; "
                                   "consider comparing the fields manually")
               << PointeeType->getAsTagDecl();
