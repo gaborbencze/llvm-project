@@ -1730,6 +1730,21 @@ Either the comparison is useless or there is division by zero.
 alpha.cplusplus
 ^^^^^^^^^^^^^^^
 
+.. _alpha-cplusplus-ArrayDeleteThroughIncorrectType:
+
+alpha.cplusplus.ArrayDeleteThroughIncorrectType (C++)
+"""""""""""""""""""""""""""""""""""""""""""""""""""""
+Reports uses of ``delete[]`` when an array object is deleted through a static
+pointer type that differs from the dynamic pointer type of the object.
+
+.. code-block:: cpp
+
+ void foo() {
+   Base *x = new Derived[5];
+   delete[] x; // warn: deleting an array through a pointer to the incorrect
+               //       type
+ }
+
 .. _alpha-cplusplus-DeleteWithNonVirtualDtor:
 
 alpha.cplusplus.DeleteWithNonVirtualDtor (C++)
