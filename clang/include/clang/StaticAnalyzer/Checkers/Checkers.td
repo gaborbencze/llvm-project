@@ -753,8 +753,8 @@ def SmartPtrChecker: Checker<"SmartPtr">,
 
 def ArrayDeleteThroughIncorrectTypeChecker : Checker<"ArrayDeleteThroughIncorrectType">,
   HelpText<"Reports uses of 'delete[]' when an array object is deleted "
-           "through a static pointer type that differs from the dynamic "
-           "pointer type of the object">,
+           "through a static type that differs from the dynamic type of the "
+           "object">,
   Documentation<HasAlphaDocumentation>;
 
 } // end: "alpha.cplusplus"

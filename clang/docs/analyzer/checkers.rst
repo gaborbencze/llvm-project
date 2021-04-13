@@ -1735,7 +1735,7 @@ alpha.cplusplus
 alpha.cplusplus.ArrayDeleteThroughIncorrectType (C++)
 """""""""""""""""""""""""""""""""""""""""""""""""""""
 Reports uses of ``delete[]`` when an array object is deleted through a static
-pointer type that differs from the dynamic pointer type of the object.
+type that differs from the dynamic type of the object.
 
 .. code-block:: cpp
 
